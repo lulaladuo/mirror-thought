@@ -57,6 +57,8 @@ export interface ConversationState {
   messages: ChatMessage[];
   detectedBeliefs: string[];
   detectedTensions: string[];
+  detectedAssumptions: string[];
+  unclearConcepts: string[];
   turnCount: number;
   canSummarize: boolean;
   shouldSummarize: boolean;

@@ -116,6 +116,8 @@ function validateChat(body) {
   assert(typeof body.message === 'string' && body.message.trim(), 'message must be a non-empty string');
   assert(Array.isArray(body.detected_beliefs), 'detected_beliefs must be an array');
   assert(Array.isArray(body.detected_tensions), 'detected_tensions must be an array');
+  assert(Array.isArray(body.detected_assumptions), 'detected_assumptions must be an array');
+  assert(Array.isArray(body.unclear_concepts), 'unclear_concepts must be an array');
   assert(typeof body.can_summarize === 'boolean', 'can_summarize must be boolean');
   assert(typeof body.should_summarize === 'boolean', 'should_summarize must be boolean');
 
@@ -149,6 +151,9 @@ async function main() {
       history: [],
       detectedBeliefs: [],
       detectedTensions: [],
+      detectedAssumptions: [],
+      unclearConcepts: [],
+      turnCount: 1,
     }),
   });
 

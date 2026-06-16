@@ -34,10 +34,21 @@ export async function sendChatTurn(args: {
   history: ChatMessage[];
   detectedBeliefs: string[];
   detectedTensions: string[];
+  detectedAssumptions: string[];
+  unclearConcepts: string[];
+  turnCount: number;
 }): Promise<ChatResponse> {
   if (USE_MOCK_AI) {
     await wait(MOCK_LATENCY_MS);
-    return mockChatResponse(args.text, args.history, args.detectedBeliefs, args.detectedTensions);
+    return mockChatResponse(
+      args.text,
+      args.history,
+      args.detectedBeliefs,
+      args.detectedTensions,
+      args.detectedAssumptions,
+      args.unclearConcepts,
+      args.turnCount,
+    );
   }
 
   return postChatResponse('/api/chat', args);
@@ -47,10 +58,13 @@ export async function requestSummary(args: {
   history: ChatMessage[];
   detectedBeliefs: string[];
   detectedTensions: string[];
+  detectedAssumptions: string[];
+  unclearConcepts: string[];
+  turnCount: number;
 }): Promise<ChatResponse> {
   if (USE_MOCK_AI) {
     await wait(320);
-    return generateSummary(args.detectedBeliefs, args.detectedTensions);
+    return generateSummary(args.detectedBeliefs, args.detectedTensions, args.detectedAssumptions, args.unclearConcepts);
   }
 
   return postChatResponse('/api/summary', args);

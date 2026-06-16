@@ -2,7 +2,7 @@ import type { ChatMessage, ChatResponse, ResponseChoice } from '../types/chat';
 
 const ALLOW_SUMMARY_TURNS = 5;
 const SUGGEST_SUMMARY_TURNS = 8;
-const FORCE_SUMMARY_TURNS = 12;
+const FORCE_SUMMARY_TURNS = 9;
 
 const crisisPatterns = [
   /不想活|自杀|轻生|结束生命|伤害自己|伤害别人|杀了|去死/,
@@ -55,6 +55,32 @@ function detectTensions(beliefs: string[], previous: string[]) {
     next.push('自主选择与责任义务之间存在张力');
   }
   return unique(next).slice(0, 4);
+}
+
+function detectAssumptions(text: string, previous: string[]) {
+  const next = [...previous];
+  if (/临时|突然|改了|改变|规则|考核/.test(text)) {
+    next.push('考核规则需要稳定，否则会改变学生原本准备和表达的前提');
+  }
+  if (/真诚|真实|自己.*理解|独立/.test(text)) {
+    next.push('真实理解不应被简单等同于某一种受限表达形式');
+  }
+  if (/AI|ai|电子设备|工具|借助/.test(text)) {
+    next.push('工具可能遮蔽理解，但使用工具不必然意味着缺少真实理解');
+  }
+  if (/应该|必须|不得不/.test(text)) {
+    next.push('这里的“应该”背后有一个尚未说明的价值或责任来源');
+  }
+  return unique(next).slice(0, 5);
+}
+
+function detectUnclearConcepts(text: string, previous: string[]) {
+  const next = [...previous];
+  if (/真诚|真实/.test(text)) next.push('真实 / 真诚');
+  if (/理解/.test(text)) next.push('自己的理解');
+  if (/公平|不公平|临时|规则|考核/.test(text)) next.push('考核公平');
+  if (/AI|ai|电子设备|工具/.test(text)) next.push('工具辅助与独立思考');
+  return unique(next).slice(0, 5);
 }
 
 function hasCrisisSignal(text: string) {
@@ -154,7 +180,39 @@ function firstTurnResponse(beliefs: string[], tensions: string[]) {
   };
 }
 
-function followUpResponse(text: string, beliefs: string[], tensions: string[], turnCount: number) {
+function followUpResponse(
+  text: string,
+  beliefs: string[],
+  tensions: string[],
+  assumptions: string[],
+  concepts: string[],
+  turnCount: number,
+) {
+  if (turnCount >= SUGGEST_SUMMARY_TURNS) {
+    const assumption = assumptions[0] ? `一个关键前提已经显出来：${assumptions[0]}。` : '这里已经不适合继续细分新的问题。';
+    return {
+      mapping: `${assumption} 我先不再开启新的追问方向，而是把当前信念、前提和张力收束起来。`,
+      question: '要不要先生成阶段性小结？',
+      hasTension: tensions.length > 0,
+    };
+  }
+
+  if (assumptions.length > 0) {
+    return {
+      mapping: `这里可能有一个需要先检验的前提：${assumptions[0]}。`,
+      question: `这个前提更接近你的真实卡点吗？`,
+      hasTension: tensions.length > 0,
+    };
+  }
+
+  if (concepts.length > 0) {
+    return {
+      mapping: `这里有一个关键词还没有完全说清：${concepts[0]}。`,
+      question: `你说的「${concepts[0]}」更接近一种事实判断，还是一种价值判断？`,
+      hasTension: tensions.length > 0,
+    };
+  }
+
   if (tensions.length > 0) {
     const options = [
       {
@@ -204,7 +262,12 @@ function followUpResponse(text: string, beliefs: string[], tensions: string[], t
   };
 }
 
-export function generateSummary(beliefs: string[], tensions: string[]): ChatResponse {
+export function generateSummary(
+  beliefs: string[],
+  tensions: string[],
+  assumptions: string[] = [],
+  unclearConcepts: string[] = [],
+): ChatResponse {
   const safeBeliefs = beliefs.length
     ? beliefs
     : ['你正在尝试澄清一个尚未完全成形的核心信念'];
@@ -225,11 +288,15 @@ export function generateSummary(beliefs: string[], tensions: string[]): ChatResp
       '2. 它们之间的张力',
       ...safeTensions.map((tension) => `- ${tension}`),
       '',
-      '3. 仍需澄清的问题',
-      '- 这些信念各自依赖的理由是什么？',
-      '- 哪个概念还没有被说清楚？',
+      '3. 已显出来的前提',
+      ...(assumptions.length ? assumptions.map((assumption) => `- ${assumption}`) : ['- 仍需要确认用户自己最在意的隐藏前提。']),
       '',
-      '4. 这次对话暂时抵达的位置',
+      '4. 仍需澄清的问题',
+      ...(unclearConcepts.length
+        ? unclearConcepts.map((concept) => `- 「${concept}」在这里具体指什么？`)
+        : ['- 这些信念各自依赖的理由是什么？', '- 哪个概念还没有被说清楚？']),
+      '',
+      '5. 这次对话暂时抵达的位置',
       '- 你现在不是缺少一个现成答案，而是需要继续区分这些信念之间的关系。',
     ].join('\n'),
     mapping: null,
@@ -239,8 +306,10 @@ export function generateSummary(beliefs: string[], tensions: string[]): ChatResp
     allow_free_text: true,
     detected_beliefs: safeBeliefs,
     detected_tensions: safeTensions,
-    detected_assumptions: [],
-    unclear_concepts: ['这些信念各自依赖的理由', '尚未被说清楚的关键概念'],
+    detected_assumptions: assumptions,
+    unclear_concepts: unclearConcepts.length
+      ? unclearConcepts
+      : ['这些信念各自依赖的理由', '尚未被说清楚的关键概念'],
     can_summarize: true,
     should_summarize: false,
   };
@@ -251,6 +320,9 @@ export function mockChatResponse(
   history: ChatMessage[],
   previousBeliefs: string[],
   previousTensions: string[],
+  previousAssumptions: string[],
+  previousUnclearConcepts: string[],
+  currentTurnCount?: number,
 ): ChatResponse {
   if (hasCrisisSignal(text)) {
     return {
@@ -273,15 +345,19 @@ export function mockChatResponse(
     };
   }
 
-  const userTurns = history.filter((message) => message.role === 'user').length + 1;
+  const userTurns = currentTurnCount ?? history.filter((message) => message.role === 'user').length + 1;
   const detectedBeliefs = detectBeliefs(text, previousBeliefs);
   const detectedTensions = detectTensions(detectedBeliefs, previousTensions);
+  const detectedAssumptions = detectAssumptions(text, previousAssumptions);
+  const unclearConcepts = detectUnclearConcepts(text, previousUnclearConcepts);
   const canSummarize =
-    userTurns >= ALLOW_SUMMARY_TURNS && detectedBeliefs.length >= 2 && detectedTensions.length >= 1;
+    userTurns >= ALLOW_SUMMARY_TURNS &&
+    ((detectedBeliefs.length >= 2 && detectedTensions.length >= 1) ||
+      (detectedBeliefs.length >= 1 && detectedTensions.length >= 1 && detectedAssumptions.length >= 1));
   const shouldSummarize = canSummarize && userTurns >= SUGGEST_SUMMARY_TURNS;
 
   if (userTurns >= FORCE_SUMMARY_TURNS) {
-    return generateSummary(detectedBeliefs, detectedTensions);
+    return generateSummary(detectedBeliefs, detectedTensions, detectedAssumptions, unclearConcepts);
   }
 
   const answer: {
@@ -292,7 +368,7 @@ export function mockChatResponse(
   } =
     userTurns === 1
       ? firstTurnResponse(detectedBeliefs, detectedTensions)
-      : followUpResponse(text, detectedBeliefs, detectedTensions, userTurns);
+      : followUpResponse(text, detectedBeliefs, detectedTensions, detectedAssumptions, unclearConcepts, userTurns);
 
   return {
     response_type: 'normal',
@@ -307,8 +383,12 @@ export function mockChatResponse(
     has_tension: answer.hasTension,
     detected_beliefs: detectedBeliefs,
     detected_tensions: detectedTensions,
-    detected_assumptions: [],
-    unclear_concepts: answer.hasTension ? ['张力双方各自依赖的理由'] : ['最核心的信念或概念'],
+    detected_assumptions: detectedAssumptions,
+    unclear_concepts: unclearConcepts.length
+      ? unclearConcepts
+      : answer.hasTension
+        ? ['张力双方各自依赖的理由']
+        : ['最核心的信念或概念'],
     can_summarize: canSummarize,
     should_summarize: shouldSummarize,
   };

@@ -4,7 +4,7 @@ import type { ChatMessage, ChatResponse, ConversationState, ResponseChoice } fro
 
 const NOTEBOOK_DATE = '2026.05.31';
 const SUGGEST_SUMMARY_TURNS = 8;
-const MAX_TURNS = 12;
+const MAX_TURNS = 9;
 const SAVED_RECORDS_KEY = 'jingguan-saved-thought-records-v1';
 const MAX_SAVED_RECORDS = 20;
 
@@ -15,12 +15,16 @@ interface SavedThoughtRecord {
   content: string;
   beliefs: string[];
   tensions: string[];
+  assumptions?: string[];
+  unclearConcepts?: string[];
 }
 
 const initialConversation: ConversationState = {
   messages: [],
   detectedBeliefs: [],
   detectedTensions: [],
+  detectedAssumptions: [],
+  unclearConcepts: [],
   turnCount: 0,
   canSummarize: false,
   shouldSummarize: false,
@@ -65,7 +69,9 @@ function readSavedRecords(): SavedThoughtRecord[] {
           typeof item?.createdAt === 'string' &&
           typeof item?.content === 'string' &&
           Array.isArray(item?.beliefs) &&
-          Array.isArray(item?.tensions)
+          Array.isArray(item?.tensions) &&
+          (item?.assumptions === undefined || Array.isArray(item.assumptions)) &&
+          (item?.unclearConcepts === undefined || Array.isArray(item.unclearConcepts))
         );
       })
       .slice(0, MAX_SAVED_RECORDS);
@@ -191,6 +197,9 @@ function App() {
         history: conversation.messages,
         detectedBeliefs: conversation.detectedBeliefs,
         detectedTensions: conversation.detectedTensions,
+        detectedAssumptions: conversation.detectedAssumptions,
+        unclearConcepts: conversation.unclearConcepts,
+        turnCount: conversation.turnCount + 1,
       });
 
       const assistantMessage = createAssistantMessage(response);
@@ -200,6 +209,8 @@ function App() {
         messages: [...current.messages, assistantMessage],
         detectedBeliefs: response.detected_beliefs,
         detectedTensions: response.detected_tensions,
+        detectedAssumptions: response.detected_assumptions,
+        unclearConcepts: response.unclear_concepts,
         canSummarize: response.can_summarize,
         shouldSummarize: response.should_summarize,
         isCrisis: response.response_type === 'crisis',
@@ -278,6 +289,9 @@ function App() {
         history: conversation.messages,
         detectedBeliefs: conversation.detectedBeliefs,
         detectedTensions: conversation.detectedTensions,
+        detectedAssumptions: conversation.detectedAssumptions,
+        unclearConcepts: conversation.unclearConcepts,
+        turnCount: conversation.turnCount,
       });
       const assistantMessage = createAssistantMessage(response);
       setConversation((current) => ({
@@ -304,6 +318,8 @@ function App() {
       content: latestSummary.content,
       beliefs: conversation.detectedBeliefs,
       tensions: conversation.detectedTensions,
+      assumptions: conversation.detectedAssumptions,
+      unclearConcepts: conversation.unclearConcepts,
     };
     const nextRecords = [record, ...savedRecords].slice(0, MAX_SAVED_RECORDS);
     setSavedRecords(nextRecords);
@@ -330,6 +346,8 @@ function App() {
       messages: [...current.messages, restoredMessage],
       detectedBeliefs: record.beliefs,
       detectedTensions: record.tensions,
+      detectedAssumptions: record.assumptions ?? [],
+      unclearConcepts: record.unclearConcepts ?? [],
       canSummarize: true,
       shouldSummarize: false,
       isClosed: false,
@@ -531,7 +549,7 @@ function ChatScreen({
 
         {conversation.shouldSummarize && !conversation.isCrisis ? (
           <div className="system-strip">
-            对话已到第 {SUGGEST_SUMMARY_TURNS} 轮附近，建议整理阶段性信念结构。
+            对话已到第 {SUGGEST_SUMMARY_TURNS} 轮附近，建议整理阶段性信念结构，避免继续细分。
             <button type="button" onClick={onSummary} disabled={isLoading}>
               现在总结
             </button>
@@ -653,6 +671,26 @@ function BeliefSidebar({
               ))
             ) : (
               <BeliefNote placeholder>张力识别中...</BeliefNote>
+            )}
+          </ul>
+        </section>
+
+        <section>
+          <h2>待检验前提</h2>
+          <ul className="note-list">
+            {conversation.detectedAssumptions.length > 0 ? (
+              conversation.detectedAssumptions.map((assumption) => <BeliefNote key={assumption}>{assumption}</BeliefNote>)
+            ) : (
+              <BeliefNote placeholder>前提识别中...</BeliefNote>
+            )}
+            {conversation.unclearConcepts.length > 0 ? (
+              conversation.unclearConcepts.map((concept) => (
+                <BeliefNote key={concept} tension>
+                  {concept}
+                </BeliefNote>
+              ))
+            ) : (
+              <BeliefNote placeholder>概念识别中...</BeliefNote>
             )}
           </ul>
         </section>

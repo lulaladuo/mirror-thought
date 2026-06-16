@@ -16,6 +16,9 @@ interface RuntimeRequest {
   history: ChatMessage[];
   detectedBeliefs: string[];
   detectedTensions: string[];
+  detectedAssumptions: string[];
+  unclearConcepts: string[];
+  currentUserTurnCount: number;
 }
 
 interface EndpointErrorBody {
@@ -53,7 +56,7 @@ const MAX_HISTORY_MESSAGES = 16;
 const REPAIR_TEXT_LIMIT = 8000;
 const ALLOW_SUMMARY_TURNS = 5;
 const SUGGEST_SUMMARY_TURNS = 8;
-const FORCE_SUMMARY_TURNS = 12;
+const FORCE_SUMMARY_TURNS = 9;
 
 const responseTypes = new Set<ResponseType>(['normal', 'summary', 'crisis']);
 const riskLevels = new Set<RiskLevel>(['none', 'low', 'high']);
@@ -203,19 +206,35 @@ function readStringArray(value: unknown, maxItems: number) {
     .slice(0, maxItems);
 }
 
+function isReadableChatMessage(item: unknown): item is ChatMessage {
+  return (
+    isRecord(item) &&
+    (item.role === 'user' || item.role === 'assistant') &&
+    typeof item.content === 'string' &&
+    item.content.trim().length > 0
+  );
+}
+
 function readHistory(value: unknown) {
   if (!Array.isArray(value)) return [];
 
   return value
-    .filter((item): item is ChatMessage => {
-      return (
-        isRecord(item) &&
-        (item.role === 'user' || item.role === 'assistant') &&
-        typeof item.content === 'string' &&
-        item.content.trim().length > 0
-      );
-    })
+    .filter(isReadableChatMessage)
     .slice(-MAX_HISTORY_MESSAGES);
+}
+
+function countHistoryUserTurns(value: unknown) {
+  if (!Array.isArray(value)) return 0;
+  return value.filter((item) => isReadableChatMessage(item) && item.role === 'user').length;
+}
+
+function readCurrentUserTurnCount(payload: Record<string, unknown>, mode: 'chat' | 'summary') {
+  const explicitTurnCount = payload.turnCount;
+  if (typeof explicitTurnCount === 'number' && Number.isFinite(explicitTurnCount) && explicitTurnCount >= 0) {
+    return Math.floor(explicitTurnCount);
+  }
+
+  return countHistoryUserTurns(payload.history) + (mode === 'chat' ? 1 : 0);
 }
 
 function endpointError(error: unknown): EndpointResult {
@@ -259,6 +278,9 @@ function getRuntimeRequest(payload: unknown, mode: 'chat' | 'summary'): RuntimeR
     history: readHistory(payload.history),
     detectedBeliefs: readStringArray(payload.detectedBeliefs, 5),
     detectedTensions: readStringArray(payload.detectedTensions, 4),
+    detectedAssumptions: readStringArray(payload.detectedAssumptions, 5),
+    unclearConcepts: readStringArray(payload.unclearConcepts, 5),
+    currentUserTurnCount: readCurrentUserTurnCount(payload, mode),
   };
 }
 
@@ -340,9 +362,11 @@ async function getSystemPrompt() {
       '## 运行时补充',
       '',
       '- 你会收到当前会话的结构化状态，previous_detected_beliefs / previous_detected_tensions 只作为暂定上下文。',
+      '- previous_detected_assumptions / previous_unclear_concepts 是本次会话已浮现的来访者预设和待澄清概念，第二轮之后必须优先检查它们是否才是当前困惑的卡点。',
       '- 如果本轮任务是 summary，response_type 必须为 "summary"，phase 必须为 "summary"，question 必须为 null。',
-      '- 如果本轮任务是 chat，除危机场景和第 12 轮强制收束外，response_type 必须为 "normal"，并保持一个核心追问。',
-      '- 当 current_user_turn_count >= 12 时，本轮必须强制收束为阶段性总结：response_type 为 "summary"，phase 为 "summary"，question 为 null，不要继续追问。',
+      '- 如果本轮任务是 chat，除危机场景和第 9 轮强制收束外，response_type 必须为 "normal"，并保持一个核心追问。',
+      '- 当 current_user_turn_count >= 9 时，本轮必须强制收束为阶段性总结：response_type 为 "summary"，phase 为 "summary"，question 为 null，不要继续追问。',
+      '- 当 current_user_turn_count >= 8 且尚未强制总结时，不要开启新的细枝追问；请做收束性映射，并只询问是否先生成阶段性小结。',
       '- 第一轮或用户表达仍不清楚时，优先使用 response_mode "choice"，给 2-4 个澄清选项，并保留自由输入。',
       '- choices 必须是 JSON array，不要把数组序列化成字符串。',
       '- 如果选项点击后只需要用户补充一句，不需要立即再次调用模型，则该选项 requires_api_after_choice 设为 false，并写入 client_followup。',
@@ -378,7 +402,7 @@ function mergeConsecutiveMessages(messages: AnthropicMessage[]) {
 }
 
 function countUserTurns(request: RuntimeRequest) {
-  return request.history.filter((message) => message.role === 'user').length + (request.mode === 'chat' ? 1 : 0);
+  return request.currentUserTurnCount;
 }
 
 function shouldForceSummary(request: RuntimeRequest) {
@@ -396,10 +420,12 @@ function buildRuntimeTask(request: RuntimeRequest) {
       suggest_after_effective_user_turns: SUGGEST_SUMMARY_TURNS,
       force_summary_at_user_turn: FORCE_SUMMARY_TURNS,
       can_summarize_meaning:
-        '被动可用状态：材料足够生成阶段性结构整理，但不主动催促、不停止对话、不表示已有结论。',
+        '材料足够生成阶段性结构整理；第 8 轮应主动收束提醒，第 9 轮必须生成阶段性小结，不表示已有结论。',
     },
     previous_detected_beliefs: request.detectedBeliefs,
     previous_detected_tensions: request.detectedTensions,
+    previous_detected_assumptions: request.detectedAssumptions,
+    previous_unclear_concepts: request.unclearConcepts,
   };
 
   if (request.mode === 'summary') {
@@ -420,7 +446,9 @@ function buildRuntimeTask(request: RuntimeRequest) {
     '【本轮任务】',
     shouldForceSummary(request)
       ? '本轮已经达到强制收束轮次。请生成阶段性思想分析小结，response_type 必须为 "summary"，phase 必须为 "summary"，question 必须为 null，response_mode 必须为 "free_text"，choices 必须为空数组。不要继续追问，不要给建议、行动方案、安慰或结论。'
-      : '请处理用户本轮输入，先形成可分析的“惑”，再给出一个最关键追问。必须只输出符合 system prompt schema 的 JSON object。',
+      : userTurnCount >= SUGGEST_SUMMARY_TURNS
+        ? '本轮已经接近收束。请不要开启新的细枝追问；请优先整理已经显出来的来访者预设、核心信念和张力，并用一个收束性问题询问是否先生成阶段性小结。必须只输出符合 system prompt schema 的 JSON object。'
+        : '请处理用户本轮输入，先识别来访者表达中自带的隐藏预设或理由前提，再形成可分析的“惑”，最后给出一个最关键追问。必须只输出符合 system prompt schema 的 JSON object。',
     '',
     '【用户本轮输入】',
     request.text,
@@ -890,12 +918,85 @@ function validateChatResponse(value: unknown): ChatResponse {
 }
 
 function hasSummaryReadyStructure(response: ChatResponse) {
-  return (
-    response.detected_beliefs.length >= 2 &&
+  const hasBeliefTensionStructure = response.detected_beliefs.length >= 2 && response.detected_tensions.length >= 1;
+  const hasAssumptionTensionStructure =
+    response.detected_beliefs.length >= 1 &&
     response.detected_tensions.length >= 1 &&
+    (response.detected_assumptions.length >= 1 || response.unclear_concepts.length >= 1);
+
+  return (
+    (hasBeliefTensionStructure || hasAssumptionTensionStructure) &&
     response.phase !== 'intake' &&
     response.response_type !== 'crisis'
   );
+}
+
+function fallbackList(primary: string[], secondary: string[], fallback: string) {
+  const items = primary.length ? primary : secondary;
+  return items.length ? items : [fallback];
+}
+
+function bulletLines(items: string[]) {
+  return items.map((item) => `- ${item}`);
+}
+
+function createForcedSummaryResponse(request: RuntimeRequest, response?: ChatResponse): ChatResponse {
+  const detected_beliefs = fallbackList(
+    response?.detected_beliefs ?? [],
+    request.detectedBeliefs,
+    '用户正在尝试澄清一个尚未完全命名的核心信念',
+  ).slice(0, 5);
+  const detected_tensions = fallbackList(
+    response?.detected_tensions ?? [],
+    request.detectedTensions,
+    '当前困惑中已经出现张力，但张力双方仍需要更精确命名',
+  ).slice(0, 4);
+  const detected_assumptions = fallbackList(
+    response?.detected_assumptions ?? [],
+    request.detectedAssumptions,
+    '真正需要检验的前提仍需由用户确认',
+  ).slice(0, 5);
+  const unclear_concepts = fallbackList(
+    response?.unclear_concepts ?? [],
+    request.unclearConcepts,
+    '核心概念的含义仍需进一步澄清',
+  ).slice(0, 5);
+
+  return {
+    response_type: 'summary',
+    risk_level: 'none',
+    phase: 'summary',
+    message: [
+      '我先在这里做阶段性收束。',
+      '',
+      '1. 目前已经显出来的核心信念',
+      ...bulletLines(detected_beliefs),
+      '',
+      '2. 它们之间的张力',
+      ...bulletLines(detected_tensions),
+      '',
+      '3. 已显出来的前提',
+      ...bulletLines(detected_assumptions),
+      '',
+      '4. 仍需澄清的概念',
+      ...bulletLines(unclear_concepts),
+      '',
+      '5. 这次对话暂时抵达的位置',
+      '- 这还不是结论，而是当前困惑结构的阶段性整理；继续分析时，应优先检验这些前提是否准确。',
+    ].join('\n'),
+    mapping: null,
+    question: null,
+    response_mode: 'free_text',
+    choices: [],
+    allow_free_text: true,
+    has_tension: detected_tensions.length > 0,
+    detected_beliefs,
+    detected_tensions,
+    detected_assumptions,
+    unclear_concepts,
+    can_summarize: true,
+    should_summarize: false,
+  };
 }
 
 function applySummaryPolicy(request: RuntimeRequest, response: ChatResponse): ChatResponse {
@@ -931,6 +1032,15 @@ function assertRuntimeSummaryPolicy(request: RuntimeRequest, response: ChatRespo
   }
 }
 
+function applyRuntimeSummaryPolicy(request: RuntimeRequest, response: ChatResponse) {
+  if (shouldForceSummary(request) && response.response_type !== 'summary') {
+    return createForcedSummaryResponse(request, response);
+  }
+
+  assertRuntimeSummaryPolicy(request, response);
+  return applySummaryPolicy(request, response);
+}
+
 async function generateWithClaude(request: RuntimeRequest) {
   const system = await getSystemPrompt();
   const messages = buildMessages(request);
@@ -939,8 +1049,7 @@ async function generateWithClaude(request: RuntimeRequest) {
 
   try {
     const response = validateChatResponse(firstPayload);
-    assertRuntimeSummaryPolicy(request, response);
-    return applySummaryPolicy(request, response);
+    return applyRuntimeSummaryPolicy(request, response);
   } catch (firstError) {
     const repairMessages = mergeConsecutiveMessages([
       ...messages,
@@ -957,8 +1066,7 @@ async function generateWithClaude(request: RuntimeRequest) {
     ]);
     const repairedResponse = await callAnthropic(system, repairMessages);
     const response = validateChatResponse(extractAssistantPayload(repairedResponse));
-    assertRuntimeSummaryPolicy(request, response);
-    return applySummaryPolicy(request, response);
+    return applyRuntimeSummaryPolicy(request, response);
   }
 }
 
