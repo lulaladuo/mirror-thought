@@ -29,7 +29,7 @@ interface EndpointErrorBody {
 interface EndpointHealthBody {
   ok: boolean;
   service: 'jingguan-api';
-  mode: 'anthropic' | 'mock';
+  mode: 'anthropic' | 'qwen' | 'mock';
   anthropic_configured: boolean;
   has_api_key: boolean;
   has_model: boolean;
@@ -180,6 +180,7 @@ const responseTool = {
   },
 };
 
+// 提示词更新后由本地服务重载，供团队逐次验收。
 let systemPromptPromise: Promise<string> | null = null;
 
 class PublicEndpointError extends Error {
@@ -285,15 +286,17 @@ function getRuntimeRequest(payload: unknown, mode: 'chat' | 'summary'): RuntimeR
 }
 
 function readConfigValues() {
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
-  const model = process.env.ANTHROPIC_MODEL?.trim();
-  const apiUrl = process.env.ANTHROPIC_MESSAGES_URL?.trim() || DEFAULT_ANTHROPIC_API_URL;
+  const provider: 'qwen' | 'anthropic' = process.env.JINGGUAN_PROVIDER === 'qwen' ? 'qwen' : 'anthropic';
+  const apiKey = (provider === 'qwen' ? process.env.DASHSCOPE_API_KEY : process.env.ANTHROPIC_API_KEY)?.trim();
+  const model = provider === 'qwen' ? (process.env.QWEN_MODEL?.trim() || 'qwen-plus') : process.env.ANTHROPIC_MODEL?.trim();
+  const apiUrl = provider === 'qwen' ? (process.env.QWEN_API_URL?.trim() || 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions') : (process.env.ANTHROPIC_MESSAGES_URL?.trim() || DEFAULT_ANTHROPIC_API_URL);
   const apiVersion = process.env.ANTHROPIC_VERSION?.trim() || DEFAULT_ANTHROPIC_VERSION;
   const betaHeaders = process.env.ANTHROPIC_BETA_HEADERS?.trim();
   const maxTokensValue = Number(process.env.ANTHROPIC_MAX_TOKENS ?? DEFAULT_MAX_TOKENS);
   const maxTokens = Number.isFinite(maxTokensValue) && maxTokensValue > 0 ? Math.floor(maxTokensValue) : DEFAULT_MAX_TOKENS;
 
   return {
+    provider,
     apiKey,
     model,
     apiUrl,
@@ -308,8 +311,8 @@ function getConfig() {
   const { apiKey, model } = config;
 
   if (!apiKey || !model) {
-    const missing = [apiKey ? null : 'ANTHROPIC_API_KEY', model ? null : 'ANTHROPIC_MODEL'].filter(Boolean);
-    throw new PublicEndpointError(501, `Anthropic API 尚未配置：缺少 ${missing.join(', ')}。`);
+    const missing = [apiKey ? null : (config.provider === 'qwen' ? 'DASHSCOPE_API_KEY' : 'ANTHROPIC_API_KEY'), model ? null : 'ANTHROPIC_MODEL'].filter(Boolean);
+    throw new PublicEndpointError(501, `模型 API 尚未配置：缺少 ${missing.join(', ')}。`);
   }
 
   return {
@@ -330,7 +333,7 @@ async function isSystemPromptReadable() {
 
 export async function handleHealthPayload(): Promise<EndpointResult> {
   const config = readConfigValues();
-  const mode = process.env.VITE_JINGGUAN_API_MODE?.trim() === 'mock' ? 'mock' : 'anthropic';
+  const mode = process.env.VITE_JINGGUAN_API_MODE?.trim() === 'mock' ? 'mock' : config.provider;
   const promptLoaded = await isSystemPromptReadable();
   const anthropicConfigured = Boolean(config.apiKey && config.model);
 
@@ -340,7 +343,7 @@ export async function handleHealthPayload(): Promise<EndpointResult> {
       ok: mode === 'mock' || (anthropicConfigured && promptLoaded),
       service: 'jingguan-api',
       mode,
-      anthropic_configured: anthropicConfigured,
+      anthropic_configured: config.provider === 'anthropic' && anthropicConfigured,
       has_api_key: Boolean(config.apiKey),
       has_model: Boolean(config.model),
       model: config.model || null,
@@ -355,7 +358,7 @@ export async function handleHealthPayload(): Promise<EndpointResult> {
 }
 
 async function getSystemPrompt() {
-  systemPromptPromise ??= fs.readFile(SYSTEM_PROMPT_PATH, 'utf8').then((prompt) => {
+  systemPromptPromise = fs.readFile(SYSTEM_PROMPT_PATH, 'utf8').then((prompt) => {
     return [
       prompt.trim(),
       '',
@@ -364,7 +367,7 @@ async function getSystemPrompt() {
       '- 你会收到当前会话的结构化状态，previous_detected_beliefs / previous_detected_tensions 只作为暂定上下文。',
       '- previous_detected_assumptions / previous_unclear_concepts 是本次会话已浮现的来访者预设和待澄清概念，第二轮之后必须优先检查它们是否才是当前困惑的卡点。',
       '- 如果本轮任务是 summary，response_type 必须为 "summary"，phase 必须为 "summary"，question 必须为 null。',
-      '- 如果本轮任务是 chat，除危机场景和第 9 轮强制收束外，response_type 必须为 "normal"，并保持一个核心追问。',
+      '- 如果本轮任务是 chat，普通回应最多一个核心追问；用户请求整理或暂停时不得追加问题。',
       '- 当 current_user_turn_count >= 9 时，本轮必须强制收束为阶段性总结：response_type 为 "summary"，phase 为 "summary"，question 为 null，不要继续追问。',
       '- 当 current_user_turn_count >= 8 且尚未强制总结时，不要开启新的细枝追问；请做收束性映射，并只询问是否先生成阶段性小结。',
       '- 第一轮或用户表达仍不清楚时，优先使用 response_mode "choice"，给 2-4 个澄清选项，并保留自由输入。',
@@ -434,7 +437,7 @@ function buildRuntimeTask(request: RuntimeRequest) {
       JSON.stringify(state, null, 2),
       '',
       '【本轮任务】',
-      '请基于当前会话生成阶段性思想分析小结。只呈现核心信念、张力、仍需澄清的问题和暂时抵达的位置；不要给建议、行动方案、安慰或结论。',
+      '请立即整理当前会话，不受5轮门槛限制。message 必须含三个分段标题：已经明确的、还不确定的、暂时停在这里。已明确的只写用户亲自表达或确认的事实、感受与疑问，保留可能/不确定；还不确定的写待检验联系，不能登记成确定立场。材料不足也如实说明。response_type=summary，phase=summary，question=null，mapping=null，choices=[]，不要邀请回答，不要给建议。',
       '必须只输出符合 system prompt schema 的 JSON object。',
     ].join('\n');
   }
@@ -448,7 +451,7 @@ function buildRuntimeTask(request: RuntimeRequest) {
       ? '本轮已经达到强制收束轮次。请生成阶段性思想分析小结，response_type 必须为 "summary"，phase 必须为 "summary"，question 必须为 null，response_mode 必须为 "free_text"，choices 必须为空数组。不要继续追问，不要给建议、行动方案、安慰或结论。'
       : userTurnCount >= SUGGEST_SUMMARY_TURNS
         ? '本轮已经接近收束。请不要开启新的细枝追问；请优先整理已经显出来的来访者预设、核心信念和张力，并用一个收束性问题询问是否先生成阶段性小结。必须只输出符合 system prompt schema 的 JSON object。'
-        : '请处理用户本轮输入，先识别来访者表达中自带的隐藏预设或理由前提，再形成可分析的“惑”，最后给出一个最关键追问。必须只输出符合 system prompt schema 的 JSON object。',
+        : '请先回看历史中已确认的内容及重复追问，处理用户本轮输入；已有核心张力时优先检验判断之间的理由联系，不默认询问词语定义，同一概念澄清不得超过3轮。未确认前提只能作为待检验问题，不能当成用户立场。第一轮先确认困惑，最后给出一个能带来新增理解且容易回答的小范围追问，不要求完整定义或完整标准；用户答不上来时优先用已有材料做可修正的情境对比，不默认索要真实事件或最早记忆；连续两次卡住时先整理已知与未知，允许暂停，普通回复可以不提问。问句必须短而直接，禁止“是否完全不可想象”等双重否定和需要先想出解决方法的假设。必须只输出符合 system prompt schema 的 JSON object。',
     '',
     '【用户本轮输入】',
     request.text,
@@ -481,6 +484,29 @@ function buildMessages(request: RuntimeRequest) {
 
 async function callAnthropic(system: string, messages: AnthropicMessage[]) {
   const config = getConfig();
+  if (config.provider === 'qwen') {
+    const response = await fetch(config.apiUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${config.apiKey}` },
+      signal: AbortSignal.timeout(60000),
+      body: JSON.stringify({
+        model: config.model,
+        messages: [{ role: 'system', content: system + '\n仅输出 JSON 对象，必须符合以下格式：\n' + JSON.stringify(responseTool.input_schema) }, ...messages],
+        enable_thinking: false,
+        response_format: { type: 'json_object' },
+        max_tokens: config.maxTokens,
+      }),
+    });
+    const value: unknown = await response.json();
+    if (!response.ok) {
+      const error = isRecord(value) && isRecord(value.error) ? value.error : {};
+      throw new PublicEndpointError(response.status >= 500 ? 502 : response.status, '千问 API 请求失败。', typeof error.code === 'string' ? error.code : '请检查密钥、权限和额度。');
+    }
+    if (!isRecord(value) || !Array.isArray(value.choices)) throw new PublicEndpointError(502, '千问返回格式异常。');
+    const first = value.choices[0];
+    if (!isRecord(first) || !isRecord(first.message) || typeof first.message.content !== 'string') throw new PublicEndpointError(502, '千问未返回回答。');
+    return { content: [{ type: 'text', text: first.message.content }] };
+  }
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     'x-api-key': config.apiKey,
@@ -1027,18 +1053,46 @@ function applySummaryPolicy(request: RuntimeRequest, response: ChatResponse): Ch
 }
 
 function assertRuntimeSummaryPolicy(request: RuntimeRequest, response: ChatResponse) {
+  if (request.mode === 'summary' && (response.response_type !== 'summary' || response.question !== null || !['已经明确的', '还不确定的', '暂时停在这里'].every(title => response.message.includes(title)))) {
+    throw new Error('整理必须直接输出summary，message包含已经明确的、还不确定的、暂时停在这里三个标题，不能提问');
+  }
   if (shouldForceSummary(request) && response.response_type !== 'summary') {
     throw new Error(`turn ${FORCE_SUMMARY_TURNS} and later must return a summary response`);
   }
 }
 
+function ensureSummarySections(response: ChatResponse): ChatResponse {
+  if (response.response_type !== 'summary') return response;
+  const message = response.message;
+  if (message.includes('已经明确的') && message.includes('还不确定的') && message.includes('暂时停在这里')) return response;
+  const bullets = (items: string[], fallback: string) => (items.length ? items : [fallback]).map(item => `- ${item}`).join('\n');
+  return {
+    ...response,
+    question: null,
+    response_mode: 'free_text',
+    choices: [],
+    message: [
+      '阶段性小结',
+      '',
+      '已经明确的',
+      bullets(response.detected_beliefs, '目前还没有得到用户确认的确定信念。'),
+      '',
+      '还不确定的',
+      bullets([...response.detected_tensions, ...response.detected_assumptions, ...response.unclear_concepts], '上述联系和概念仍需用户确认。'),
+      '',
+      '暂时停在这里',
+      '这份整理不构成结论，也不要求现在继续回答。',
+    ].join('\n'),
+  };
+}
+
 function applyRuntimeSummaryPolicy(request: RuntimeRequest, response: ChatResponse) {
   if (shouldForceSummary(request) && response.response_type !== 'summary') {
-    return createForcedSummaryResponse(request, response);
+    return ensureSummarySections(createForcedSummaryResponse(request, response));
   }
 
   assertRuntimeSummaryPolicy(request, response);
-  return applySummaryPolicy(request, response);
+  return ensureSummarySections(applySummaryPolicy(request, response));
 }
 
 async function generateWithClaude(request: RuntimeRequest) {
@@ -1073,6 +1127,8 @@ async function generateWithClaude(request: RuntimeRequest) {
 export async function handleChatPayload(payload: unknown): Promise<EndpointResult> {
   try {
     const request = getRuntimeRequest(payload, 'chat');
+    const text = request.text ?? '';
+    if (/(整理|总结|小结)/.test(text) && !/(不要|不想|不用)(?:再|先)?(?:整理|总结|小结)/.test(text)) request.mode = 'summary';
     return {
       status: 200,
       body: await generateWithClaude(request),

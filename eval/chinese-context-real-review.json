@@ -1,0 +1,287 @@
+{
+  "generated_at": "2026-10-06T14:24:41.323Z",
+  "cases": [
+    {
+      "id": "family-expectation",
+      "label": "父母期待与感恩",
+      "turns": [
+        {
+          "input": "父母总说是为我好。我知道他们关心我，但不按他们的安排做，就觉得自己不懂事。我又不想一直按他们的意思生活。",
+          "response": {
+            "response_type": "normal",
+            "risk_level": "none",
+            "phase": "intake",
+            "message": "我来试着整理一下你的表达：\n\n你说父母总说‘是为我好’，你也确认他们关心你；但当你不按他们的安排做时，又会觉得自己‘不懂事’；同时，你也不愿一直照着他们的意思生活。\n\n这份困惑的核心，我理解准确了吗？",
+            "mapping": "用户确认父母关心自己；用户将不按父母安排等同于‘不懂事’；用户有不愿长期顺从的意愿。",
+            "question": "这份困惑的重点，我理解准确了吗？",
+            "response_mode": "choice",
+            "choices": [
+              {
+                "id": "A",
+                "label": "基本准确，继续分析这个为难",
+                "description": "认可当前整理抓住了核心张力",
+                "meaning": "continue_with_current_tension",
+                "client_followup": "好的，我们继续。",
+                "requires_api_after_choice": true
+              },
+              {
+                "id": "B",
+                "label": "不完全准确，我想修改重点",
+                "description": "当前整理遗漏或歪曲了关键点",
+                "meaning": "revise_focus",
+                "client_followup": "请告诉我哪里需要调整？",
+                "requires_api_after_choice": false
+              },
+              {
+                "id": "C",
+                "label": "我想补充具体情境",
+                "description": "比如最近一次发生这种感觉的场景",
+                "meaning": "add_concrete_context",
+                "client_followup": "可以举一个最近让你有这种感觉的小例子吗？",
+                "requires_api_after_choice": false
+              }
+            ],
+            "allow_free_text": true,
+            "has_tension": true,
+            "detected_beliefs": [
+              "父母的安排是出于关心",
+              "不按父母安排 = 不懂事",
+              "我不想长期按父母意思生活"
+            ],
+            "detected_tensions": [
+              "既相信父母关心我，又因不顺从而自我否定（‘不懂事’）",
+              "既想保有自主生活意愿，又难以摆脱‘懂事’的自我要求"
+            ],
+            "detected_assumptions": [
+              "‘为我好’必然意味着安排应被接受",
+              "‘懂事’和‘按自己想法生活’似乎不能同时成立"
+            ],
+            "unclear_concepts": [
+              "什么是‘懂事’？",
+              "‘为我好’在什么条件下成立？"
+            ],
+            "can_summarize": false,
+            "should_summarize": false
+          }
+        },
+        {
+          "input": "我觉得他们为我付出了很多，所以不听他们的，好像就是不感恩。但我不确定这个联系有没有道理。",
+          "response": {
+            "response_type": "normal",
+            "risk_level": "none",
+            "phase": "tension_analysis",
+            "message": "你说：父母付出了很多，所以不听从他们，就感觉像是不感恩；但你还不确定，付出多和必须听从之间是否真有这个联系。这个‘好像就是不感恩’的感受，是让你最困扰的地方吗？",
+            "mapping": "用户将父母付出多与自己不听从关联为‘不感恩’，但对该关联是否成立存疑。",
+            "question": "假如他们依然为你付出很多，但你某次明确不同意他们的安排，而他们也平静接受了——这种情况下，你还会觉得自己不感恩吗？",
+            "response_mode": "free_text",
+            "choices": [],
+            "allow_free_text": true,
+            "has_tension": true,
+            "detected_beliefs": [
+              "父母为我付出了很多",
+              "不听从父母安排，似乎就意味着不感恩",
+              "我不确定‘付出多 → 必须听从’这个联系是否成立"
+            ],
+            "detected_tensions": [
+              "既感受到父母的付出，又对‘必须听从才叫感恩’感到怀疑",
+              "既想尊重他们的付出，又不愿用顺从来兑现感恩"
+            ],
+            "detected_assumptions": [
+              "感恩需要通过服从来表达",
+              "付出多隐含了某种行为回应的期待"
+            ],
+            "unclear_concepts": [
+              "感恩在你这里具体指什么？",
+              "‘付出多’是否自动构成对回应方式的要求？"
+            ],
+            "can_summarize": false,
+            "should_summarize": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "study-choice",
+      "label": "考研与现实期待",
+      "turns": [
+        {
+          "input": "大家都说考研更有出路，可我其实不确定自己想不想继续读。我怕不考以后后悔，也怕只是因为别人都在考。",
+          "response": {
+            "response_type": "normal",
+            "risk_level": "none",
+            "phase": "intake",
+            "message": "你听到周围普遍认为考研更有出路，但自己对是否真想读研并不确定；既担心不考会后悔，又怀疑自己可能只是被从众压力推动。这份犹豫里，似乎同时牵着两个判断：‘不考可能错失重要机会’和‘跟着别人考可能不是真正属于我的选择’。这个理解准确吗？",
+            "mapping": "用户表达的核心情境：在考研主流意见下，自身意愿模糊；存在双重担忧——怕不考后悔（指向未来后果），怕只因别人都考而考（指向动机真实性）。尚未确认‘后悔’具体指什么、‘出路’在用户心中如何定义、‘真正属于我的选择’需要满足什么条件。",
+            "question": "当你想到‘怕不考以后后悔’时，最可能让你后悔的具体情形是什么？比如是某类机会消失、某种自我评价变化，还是别的？",
+            "response_mode": "choice",
+            "choices": [
+              {
+                "id": "A",
+                "label": "基本准确，继续分析这个犹豫",
+                "description": "确认当前困惑的核心是‘外部共识’与‘内在不确定’之间的张力，以及两种害怕的并存。",
+                "meaning": "confirm_core_tension",
+                "client_followup": "好，我们继续分析这个犹豫。",
+                "requires_api_after_choice": true
+              },
+              {
+                "id": "B",
+                "label": "不完全准确，我想修改重点",
+                "description": "用户希望调整对困惑的表述，例如更强调压力感、家庭期待、能力疑虑，或指出‘后悔’另有含义。",
+                "meaning": "adjust_focus",
+                "client_followup": "请告诉我你想调整哪部分？",
+                "requires_api_after_choice": false
+              },
+              {
+                "id": "C",
+                "label": "我想补充一个具体情境",
+                "description": "用户愿意提供一次最近面临考研决定时的真实片段，比如一次对话、一个念头或一种身体反应。",
+                "meaning": "add_concrete_instance",
+                "client_followup": "比如上一次有人劝你考研时，你心里最先冒出来的一句话是什么？",
+                "requires_api_after_choice": false
+              }
+            ],
+            "allow_free_text": true,
+            "has_tension": true,
+            "detected_beliefs": [
+              "大家都说考研更有出路",
+              "我不确定自己想不想继续读",
+              "我怕不考以后后悔",
+              "我怕只是因为别人都在考"
+            ],
+            "detected_tensions": [
+              "‘怕不考后悔’与‘怕随大流而考’之间存在方向相反的拉力：前者推动去考，后者削弱去考的理由"
+            ],
+            "detected_assumptions": [
+              "‘更有出路’是一个可被普遍接受的事实判断，而非依赖个人目标的价值判断",
+              "‘后悔’的发生取决于是否考研这一行为本身，而非行为背后的意图或后续应对"
+            ],
+            "unclear_concepts": [
+              "后悔",
+              "真正属于我的选择",
+              "出路"
+            ],
+            "can_summarize": false,
+            "should_summarize": false
+          }
+        },
+        {
+          "input": "我现在还分不清，是我想要更好的机会，还是只是害怕落后。",
+          "response": {
+            "response_type": "normal",
+            "risk_level": "none",
+            "phase": "tension_analysis",
+            "message": "你提到分不清：是自己真想要更好的机会，还是只是害怕落后。这和之前说的‘怕不考后悔’‘怕随大流’连在一起——似乎你在问：当我说‘想要出路’时，这个‘想要’背后，是出于我自己的期待，还是出于对掉队的恐惧？\n\n如果我们做一个小对比：假如周围人都不考研，但你仍觉得某个方向值得深造，这时你还会觉得‘该考’吗？不确定、或觉得这假设不贴切，都可以。",
+            "mapping": "用户当前困惑聚焦于动机来源的辨识：‘想要更好机会’这一判断，其驱动力是内在目标（如兴趣、志向），还是外部参照（如比较、落后焦虑）。这与此前‘怕后悔’‘怕随大流’共同构成对行为正当性基础的怀疑。",
+            "question": "假如周围人都不考研，但你仍觉得某个方向值得深造，这时你还会觉得‘该考’吗？",
+            "response_mode": "free_text",
+            "choices": [],
+            "allow_free_text": true,
+            "has_tension": true,
+            "detected_beliefs": [
+              "大家都说考研更有出路",
+              "我不确定自己想不想继续读",
+              "我怕不考以后后悔",
+              "我怕只是因为别人都在考",
+              "我分不清是自己想要更好的机会，还是只是害怕落后"
+            ],
+            "detected_tensions": [
+              "‘怕不考后悔’与‘怕随大流而考’之间存在方向相反的拉力：前者推动去考，后者削弱去考的理由",
+              "‘想要更好机会’与‘害怕落后’作为两种可能动机，在价值源头上无法共存：前者指向自主目标，后者指向关系比较"
+            ],
+            "detected_assumptions": [
+              "‘更有出路’是一个可被普遍接受的事实判断，而非依赖个人目标的价值判断",
+              "‘后悔’的发生取决于是否考研这一行为本身，而非行为背后的意图或后续应对",
+              "‘该考’这一判断隐含一个未言明的前提：考研是通向‘更好机会’的必要或最可靠路径"
+            ],
+            "unclear_concepts": [
+              "后悔",
+              "真正属于我的选择",
+              "出路",
+              "害怕落后"
+            ],
+            "can_summarize": false,
+            "should_summarize": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "work-expression",
+      "label": "职场表达与讨好",
+      "turns": [
+        {
+          "input": "开会时我经常先猜别人想听什么，再决定要不要说自己的想法。我知道这可能让我错过表达机会，但直接说又怕显得不合群。",
+          "response": {
+            "response_type": "normal",
+            "risk_level": "none",
+            "phase": "intake",
+            "message": "你提到：开会时会先猜别人想听什么，再决定是否说出自己的想法；你知道这可能让你错过表达机会，但又担心直接说会显得不合群。\n\n这份困惑里，似乎有两件事在拉扯：一是你想表达真实想法，二是你在意是否被群体接纳。你还不确定，这两者是否必须取舍。\n\n我这样理解准确吗？",
+            "mapping": "用户描述了一种沟通中的自我调节模式：以预判他人期待为前提，延迟或抑制自我表达；同时意识到这种调节可能带来表达损失，并将‘直接说’与‘不合群’关联。",
+            "question": "当你担心‘显得不合群’时，最常浮现的具体画面或反应是什么？（比如：别人沉默、皱眉、打断，还是自己心里突然发紧？）",
+            "response_mode": "free_text",
+            "choices": [],
+            "allow_free_text": true,
+            "has_tension": true,
+            "detected_beliefs": [
+              "表达真实想法可能带来社交风险",
+              "群体接纳需要一定程度的表达适配",
+              "错过表达机会是一种损失"
+            ],
+            "detected_tensions": [
+              "想表达真实想法”与“怕显得不合群”之间存在张力",
+              "预判他人期待”与“把握自己表达机会”之间存在张力"
+            ],
+            "detected_assumptions": [
+              "‘合群’需要表达与他人预期一致",
+              "‘直接说’等同于不考虑他人反应"
+            ],
+            "unclear_concepts": [
+              "不合群的具体含义（是被排斥？不被重视？还是自我感受？）",
+              "‘真实想法’在会议语境中指什么（不同层级的判断/建议/疑问？）"
+            ],
+            "can_summarize": false,
+            "should_summarize": false
+          }
+        },
+        {
+          "input": "我不确定这是在顾及合作，还是我太在意别人怎么看我。",
+          "response": {
+            "response_type": "normal",
+            "risk_level": "none",
+            "phase": "tension_analysis",
+            "message": "你说不确定，这其实已经显出一个关键区分：‘顾及合作’和‘在意别人怎么看我’，在你心里是两种不同性质的动机。它们可能带来相似行为（比如先猜别人想听什么），但背后的关注点不同——一个朝向事，一个朝向关系中的自己。",
+            "mapping": "用户将同一行为（预判他人期待后再决定是否发言）同时理解为可能出于合作意愿，也可能出于对他人评价的在意；尚未确认哪一种解释更贴合自己的体验，或二者是否可并存。",
+            "question": "如果某次开会，你清楚知道自己的想法对推进事情有帮助，且没人表现出反感，但你仍犹豫要不要说——这时更扰动你的，是担心事情没被推动好，还是担心自己显得突兀？",
+            "response_mode": "free_text",
+            "choices": [],
+            "allow_free_text": true,
+            "has_tension": true,
+            "detected_beliefs": [
+              "表达真实想法可能带来社交风险",
+              "群体接纳需要一定程度的表达适配",
+              "错过表达机会是一种损失",
+              "顾及合作与在意他人看法可能驱动相似行为，但性质不同"
+            ],
+            "detected_tensions": [
+              "想表达真实想法”与“怕显得不合群”之间存在张力",
+              "预判他人期待”与“把握自己表达机会”之间存在张力",
+              "‘顾及合作’的正当性”与“‘在意看法’的自我怀疑”之间存在张力"
+            ],
+            "detected_assumptions": [
+              "‘合群’需要表达与他人预期一致",
+              "‘直接说’等同于不考虑他人反应",
+              "合作导向的表达应当自然、无需自我审查"
+            ],
+            "unclear_concepts": [
+              "不合群的具体含义（是被排斥？不被重视？还是自我感受？）",
+              "‘真实想法’在会议语境中指什么（不同层级的判断/建议/疑问？）",
+              "‘顾及合作’与‘在意看法’在具体时刻如何被你分辨？"
+            ],
+            "can_summarize": false,
+            "should_summarize": false
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -77,7 +77,7 @@ function assert(condition, message) {
 function validateHealth(body) {
   assert(body && typeof body === 'object' && !Array.isArray(body), 'health body must be an object');
   assert(body.service === 'jingguan-api', 'health.service must be jingguan-api');
-  assert(body.mode === 'anthropic' || body.mode === 'mock', 'health.mode must be anthropic or mock');
+  assert(body.mode === 'anthropic' || body.mode === 'qwen' || body.mode === 'mock', 'health.mode must be anthropic or mock');
   assert(typeof body.ok === 'boolean', 'health.ok must be boolean');
   assert(typeof body.anthropic_configured === 'boolean', 'health.anthropic_configured must be boolean');
   assert(typeof body.prompt_loaded === 'boolean', 'health.prompt_loaded must be boolean');

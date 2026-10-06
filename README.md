@@ -2,7 +2,7 @@
 
 镜观是一个思想分析网站的 MVP 原型。它通过苏格拉底式追问，帮助用户把模糊困惑整理为核心信念、理由前提与冲突关系。
 
-当前版本已经接入 `/api/chat` 与 `/api/summary`，服务端通过 Anthropic Messages API 调用真实模型；未配置 API key 时可以切回 mock。
+当前版本已经接入 `/api/chat` 与 `/api/summary`，服务端支持通过阿里云百炼 OpenAI 兼容接口调用 Qwen Plus，也保留 Anthropic 兼容配置；未配置 API key 时可以切回 mock。
 
 ## 当前范围
 
@@ -18,7 +18,7 @@
 暂不包含：
 
 - 登录 / 注册
-- 自动保存完整历史记录
+- 云端历史记录（当前默认保存在用户本机）
 - 可视化思想地图
 - 付费系统
 
@@ -44,9 +44,19 @@ npm run dev:mock
 
 ## API 配置
 
-在 `.env.local` 中配置服务端变量：
+在 `.env.local` 中配置服务端变量。参赛测试建议使用阿里云百炼 Qwen Plus：
 
 ```bash
+JINGGUAN_PROVIDER=qwen
+DASHSCOPE_API_KEY=<your-dashscope-key>
+QWEN_MODEL=qwen-plus
+ANTHROPIC_MAX_TOKENS=2400
+```
+
+也可继续使用 Anthropic 兼容配置：
+
+```bash
+JINGGUAN_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL=<your-claude-model>
 ANTHROPIC_VERSION=2023-06-01

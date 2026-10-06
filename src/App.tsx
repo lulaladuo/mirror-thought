@@ -1,4 +1,4 @@
-import { FormEvent, MutableRefObject, useRef, useState } from 'react';
+import { FormEvent, MutableRefObject, useEffect, useRef, useState } from 'react';
 import { requestSummary, sendChatTurn } from './lib/chatClient';
 import type { ChatMessage, ChatResponse, ConversationState, ResponseChoice } from './types/chat';
 
@@ -17,6 +17,7 @@ interface SavedThoughtRecord {
   tensions: string[];
   assumptions?: string[];
   unclearConcepts?: string[];
+  conversation?: ConversationState;
 }
 
 const initialConversation: ConversationState = {
@@ -31,6 +32,27 @@ const initialConversation: ConversationState = {
   isCrisis: false,
   isClosed: false,
 };
+
+const ACTIVE_CONVERSATION_KEY = 'jingguan-active-conversation-v1';
+
+function readActiveConversation(): ConversationState {
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+    if (!raw) return initialConversation;
+    const value = JSON.parse(raw);
+    if (!value || !Array.isArray(value.messages) || !value.messages.every((m: ChatMessage) =>
+      m && typeof m.id === 'string' && typeof m.content === 'string' && (m.role === 'user' || m.role === 'assistant')
+    )) return initialConversation;
+    for (const field of ['detectedBeliefs', 'detectedTensions', 'detectedAssumptions', 'unclearConcepts']) {
+      if (!Array.isArray(value[field]) || !value[field].every((x: unknown) => typeof x === 'string')) return initialConversation;
+    }
+    if (!Number.isInteger(value.turnCount) || value.turnCount < 0) return initialConversation;
+    for (const field of ['canSummarize', 'shouldSummarize', 'isCrisis', 'isClosed']) {
+      if (typeof value[field] !== 'boolean') return initialConversation;
+    }
+    return value;
+  } catch { return initialConversation; }
+}
 
 function createId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -122,19 +144,46 @@ function choiceApiText(choice: ResponseChoice) {
 }
 
 function App() {
-  const [view, setView] = useState<'home' | 'chat'>('home');
+  const [view, setView] = useState<'home' | 'chat'>(() => readActiveConversation().messages.length ? 'chat' : 'home');
   const [showConsent, setShowConsent] = useState(false);
   const [pendingConsentAction, setPendingConsentAction] = useState<'start' | 'new'>('start');
-  const [conversation, setConversation] = useState<ConversationState>(initialConversation);
+  const [conversation, setConversation] = useState<ConversationState>(readActiveConversation);
   const [savedRecords, setSavedRecords] = useState<SavedThoughtRecord[]>(readSavedRecords);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [historyReady, setHistoryReady] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const latestSummary = getLatestSummary(conversation.messages);
   const latestSummarySaved = latestSummary
     ? savedRecords.some((record) => record.content === latestSummary.content)
     : false;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/local-history').then(r => r.ok ? r.json() : null).then(data => {
+      if (cancelled) return;
+      if (data?.conversation?.messages?.length && !readActiveConversation().messages.length) {
+        setConversation(data.conversation);
+        setView('chat');
+      }
+      if (Array.isArray(data?.savedRecords) && data.savedRecords.length) setSavedRecords(data.savedRecords);
+    }).catch(() => {}).finally(() => { if (!cancelled) setHistoryReady(true); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    // 本机浏览器保留最近完成的对话；新对话清除当前记录。
+    if (isLoading || !historyReady) return;
+    try {
+      if (conversation.messages.length) window.localStorage.setItem(ACTIVE_CONVERSATION_KEY, JSON.stringify(conversation));
+      else window.localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+    } catch { /* 浏览器禁用存储时仍可正常对话。 */ }
+    if (import.meta.env.DEV) fetch('/api/local-history', {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ conversation, savedRecords }),
+    }).then(r => { if (!r.ok) throw new Error('保存失败'); }).catch(() => setApiError('本机历史备份失败，请先保留页面或复制对话。'));
+  }, [conversation, savedRecords, isLoading, historyReady]);
 
   function beginChat() {
     setPendingConsentAction('start');
@@ -281,7 +330,7 @@ function App() {
   }
 
   async function handleSummary() {
-    if (isLoading || conversation.isCrisis || !conversation.canSummarize) return;
+    if (isLoading || conversation.isCrisis || !conversation.messages.some(m => m.role === 'user')) return;
     setApiError(null);
     setIsLoading(true);
     try {
@@ -309,17 +358,18 @@ function App() {
   }
 
   function handleSaveCurrentSummary() {
-    if (!latestSummary || latestSummarySaved) return;
+    if (!conversation.messages.length || latestSummarySaved) return;
 
     const record: SavedThoughtRecord = {
       id: createId('record'),
       title: createRecordTitle(conversation.messages),
       createdAt: new Date().toISOString(),
-      content: latestSummary.content,
+      content: latestSummary?.content ?? conversation.messages.map(m => `${m.role === 'user' ? '来访者' : '分析师'}：${m.content}`).join('\n\n'),
       beliefs: conversation.detectedBeliefs,
       tensions: conversation.detectedTensions,
       assumptions: conversation.detectedAssumptions,
       unclearConcepts: conversation.unclearConcepts,
+      conversation,
     };
     const nextRecords = [record, ...savedRecords].slice(0, MAX_SAVED_RECORDS);
     setSavedRecords(nextRecords);
@@ -333,6 +383,12 @@ function App() {
   }
 
   function handleOpenSavedRecord(record: SavedThoughtRecord) {
+    if (record.conversation) {
+      setConversation(record.conversation);
+      setView('chat');
+      setApiError(null);
+      return;
+    }
     const restoredMessage: ChatMessage = {
       id: createId('saved-summary'),
       role: 'assistant',
@@ -386,7 +442,7 @@ function App() {
           onSummary={handleSummary}
           onSaveSummary={handleSaveCurrentSummary}
           latestSummarySaved={latestSummarySaved}
-          hasSummary={Boolean(latestSummary)}
+          hasSummary={conversation.messages.length > 0}
           apiError={apiError}
           savedRecords={savedRecords}
           onChoiceSelect={handleChoiceSelect}
@@ -532,7 +588,7 @@ function ChatScreen({
               className="text-action"
               type="button"
               onClick={onSummary}
-              disabled={isLoading || conversation.isCrisis || conversation.isClosed || !conversation.canSummarize}
+              disabled={isLoading || conversation.isCrisis || conversation.isClosed || !conversation.messages.some(m => m.role === 'user')}
             >
               生成小结
             </button>
