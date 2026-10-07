@@ -368,6 +368,7 @@ async function getSystemPrompt() {
       '- previous_detected_assumptions / previous_unclear_concepts 是本次会话已浮现的来访者预设和待澄清概念，第二轮之后必须优先检查它们是否才是当前困惑的卡点。',
       '- 如果本轮任务是 summary，response_type 必须为 "summary"，phase 必须为 "summary"，question 必须为 null。',
       '- 如果本轮任务是 chat，普通回应最多一个核心追问；用户请求整理或暂停时不得追加问题。',
+      '- 面向普通用户使用自然、清楚而有思考力度的中文：保留必要的哲学概念，但首次出现时用上下文解释，不堆叠学术术语，也不要把分析写成过度口语化的安慰话。',
       '- 当 current_user_turn_count >= 9 时，本轮必须强制收束为阶段性总结：response_type 为 "summary"，phase 为 "summary"，question 为 null，不要继续追问。',
       '- 当 current_user_turn_count >= 8 且尚未强制总结时，不要开启新的细枝追问；请做收束性映射，并只询问是否先生成阶段性小结。',
       '- 第一轮或用户表达仍不清楚时，优先使用 response_mode "choice"，给 2-4 个澄清选项，并保留自由输入。',
@@ -409,7 +410,8 @@ function countUserTurns(request: RuntimeRequest) {
 }
 
 function shouldForceSummary(request: RuntimeRequest) {
-  return request.mode === 'chat' && countUserTurns(request) >= FORCE_SUMMARY_TURNS;
+  const alreadyHasSummary = request.history.some((message) => message.role === 'assistant' && message.responseType === 'summary');
+  return request.mode === 'chat' && countUserTurns(request) >= FORCE_SUMMARY_TURNS && !alreadyHasSummary;
 }
 
 function buildRuntimeTask(request: RuntimeRequest) {
@@ -423,7 +425,7 @@ function buildRuntimeTask(request: RuntimeRequest) {
       suggest_after_effective_user_turns: SUGGEST_SUMMARY_TURNS,
       force_summary_at_user_turn: FORCE_SUMMARY_TURNS,
       can_summarize_meaning:
-        '材料足够生成阶段性结构整理；第 8 轮应主动收束提醒，第 9 轮必须生成阶段性小结，不表示已有结论。',
+      '材料足够生成阶段性结构整理；第 8 轮应主动收束提醒，第 9 轮首次达到时必须生成阶段性小结，不表示已有结论；小结后允许继续对话。',
     },
     previous_detected_beliefs: request.detectedBeliefs,
     previous_detected_tensions: request.detectedTensions,
