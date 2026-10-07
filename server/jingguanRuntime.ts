@@ -493,6 +493,8 @@ async function callAnthropic(system: string, messages: AnthropicMessage[]) {
         model: config.model,
         messages: [{ role: 'system', content: system + '\n仅输出 JSON 对象，必须符合以下格式：\n' + JSON.stringify(responseTool.input_schema) }, ...messages],
         enable_thinking: false,
+        // 固定采样温度，减少同一会话中措辞和选项结构的无意义波动。
+        temperature: 0,
         response_format: { type: 'json_object' },
         max_tokens: config.maxTokens,
       }),
