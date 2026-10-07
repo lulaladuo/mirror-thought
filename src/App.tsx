@@ -430,7 +430,12 @@ function App() {
       </header>
 
       {view === 'home' ? (
-        <HomeScreen onStart={beginChat} />
+        <HomeScreen
+          onStart={beginChat}
+          savedRecords={savedRecords}
+          onOpenSavedRecord={handleOpenSavedRecord}
+          onDeleteSavedRecord={handleDeleteSavedRecord}
+        />
       ) : (
         <ChatScreen
           conversation={conversation}
@@ -457,7 +462,17 @@ function App() {
   );
 }
 
-function HomeScreen({ onStart }: { onStart: () => void }) {
+function HomeScreen({
+  onStart,
+  savedRecords,
+  onOpenSavedRecord,
+  onDeleteSavedRecord,
+}: {
+  onStart: () => void;
+  savedRecords: SavedThoughtRecord[];
+  onOpenSavedRecord: (record: SavedThoughtRecord) => void;
+  onDeleteSavedRecord: (recordId: string) => void;
+}) {
   return (
     <section className="home-manuscript">
       <div className="home-copy">
@@ -487,6 +502,26 @@ function HomeScreen({ onStart }: { onStart: () => void }) {
           hasTension
         />
       </div>
+
+      <section className="home-saved-records" aria-label="历史记录">
+        <h2>历史记录</h2>
+        <p>保存的记录保存在本浏览器中。刷新页面或点击“新对话”不会删除它们。</p>
+        {savedRecords.length > 0 ? (
+          <ul className="home-saved-record-list">
+            {savedRecords.map((record) => (
+              <li key={record.id}>
+                <button type="button" onClick={() => onOpenSavedRecord(record)}>
+                  <span>{record.title}</span>
+                  <small>{formatRecordDate(record.createdAt)}</small>
+                </button>
+                <button type="button" onClick={() => onDeleteSavedRecord(record.id)}>删除</button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>还没有保存的记录。生成小结后点击“保存记录”即可留存。</p>
+        )}
+      </section>
     </section>
   );
 }
@@ -753,6 +788,9 @@ function BeliefSidebar({
 
         <section className="saved-records">
           <h2>保存记录</h2>
+          <p className="saved-record-help">
+            记录保存在本浏览器的本网址中。点击“新对话”或刷新不会删除记录；重新开始对话后可在这里查看。更换设备、浏览器或网址后不会自动同步。
+          </p>
           {savedRecords.length > 0 ? (
             <ul className="saved-record-list">
               {savedRecords.map((record) => (
