@@ -263,7 +263,8 @@ function App() {
         canSummarize: response.can_summarize,
         shouldSummarize: response.should_summarize,
         isCrisis: response.response_type === 'crisis',
-        isClosed: response.response_type === 'summary' && current.turnCount >= MAX_TURNS,
+        // 阶段性小结不是终点；用户可以继续对话。
+        isClosed: false,
       }));
     } catch (error) {
       setConversation((current) => ({
@@ -348,7 +349,7 @@ function App() {
         messages: [...current.messages, assistantMessage],
         canSummarize: true,
         shouldSummarize: false,
-        isClosed: current.turnCount >= MAX_TURNS,
+        isClosed: false,
       }));
     } catch (error) {
       setApiError(error instanceof Error ? error.message : '连接 API 时出现问题。');
